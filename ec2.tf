@@ -1,16 +1,21 @@
-# Get latest Amazon Linux 2023 AMI
-data "aws_ami" "amazon_linux" {
+# Get latest RedHat Enterprise Linux 9 AMI
+data "aws_ami" "rhel" {
   most_recent = true
-  owners      = ["amazon"]
+  owners      = ["309956199498"]  # RedHat official owner ID
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["RHEL-9.*-x86_64-*"]
   }
 
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
   }
 
   filter {
@@ -21,7 +26,7 @@ data "aws_ami" "amazon_linux" {
 
 # EC2 Instance
 resource "aws_instance" "main" {
-  ami           = data.aws_ami.amazon_linux.id
+  ami           = data.aws_ami.rhel.id
   instance_type = var.instance_type
   key_name      = aws_key_pair.deployer.key_name
 
