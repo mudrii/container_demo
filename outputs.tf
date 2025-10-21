@@ -49,8 +49,8 @@ output "ssh_connection_command" {
 }
 
 output "ami_id" {
-  description = "AMI ID used for EC2 instance"
-  value       = data.aws_ami.amazon_linux.id
+  description = "RHEL AMI ID used for EC2 instance"
+  value       = data.aws_ami.rhel.id
 }
 
 output "availability_zones" {
