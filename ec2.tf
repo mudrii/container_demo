@@ -1,32 +1,7 @@
-# Get latest RedHat Enterprise Linux 9 AMI
-data "aws_ami" "rhel" {
-  most_recent = true
-  owners      = ["309956199498"]  # RedHat official owner ID
-
-  filter {
-    name   = "name"
-    values = ["RHEL-9.*-x86_64-*"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-
-  filter {
-    name   = "architecture"
-    values = ["x86_64"]
-  }
-
-  filter {
-    name   = "root-device-type"
-    values = ["ebs"]
-  }
-}
-
+# RedHat Enterprise Linux 10 AMI
 # EC2 Instance
 resource "aws_instance" "main" {
-  ami           = data.aws_ami.rhel.id
+  ami           = "ami-059cedb3fbbd5b01d"  # RHEL 10 x86_64
   instance_type = var.instance_type
   key_name      = aws_key_pair.deployer.key_name
 
