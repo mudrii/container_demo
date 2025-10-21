@@ -1,0 +1,39 @@
+"# OpenTofu/Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform.lock.hcl
+terraform.tfvars
+terraform.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# SSH Keys - NEVER commit these!
+ssh_keys/
+*.pem
+*.key
+*.ppk
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Crash log files
+crash.log
+crash.*.log
+" | save -f .gitignore
