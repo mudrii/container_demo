@@ -43,7 +43,7 @@ variable "instance_type" {
 variable "allowed_ssh_cidr" {
   description = "CIDR blocks allowed to SSH"
   type        = list(string)
-  default     = ["61.6.59.4/32"]
+  default     = ["0.0.0.0/0"]
 }
 
 variable "root_volume_size" {
