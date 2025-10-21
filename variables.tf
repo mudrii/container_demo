@@ -41,9 +41,9 @@ variable "instance_type" {
 }
 
 variable "allowed_ssh_cidr" {
-  description = "CIDR blocks allowed to SSH - CHANGE THIS TO YOUR IP!"
+  description = "CIDR blocks allowed to SSH"
   type        = list(string)
-  default     = ["0.0.0.0/0"] # WARNING: Wide open! Change this!
+  default     = ["61.6.59.4/32"]
 }
 
 variable "root_volume_size" {
