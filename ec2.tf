@@ -1,7 +1,7 @@
 # RedHat Enterprise Linux 10 AMI
 # EC2 Instance
 resource "aws_instance" "main" {
-  ami           = "ami-059cedb3fbbd5b01d"  # RHEL 10 x86_64
+  ami           = "ami-049731af5cd9af3ec"  # RHEL 10 x86_64
   instance_type = var.instance_type
   key_name      = aws_key_pair.deployer.key_name
 
