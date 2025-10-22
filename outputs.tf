@@ -49,8 +49,8 @@ output "ssh_connection_command" {
 }
 
 output "ami_id" {
-  description = "RHEL AMI ID used for EC2 instance"
-  value       = data.aws_ami.rhel.id
+  description = "RHEL 10 AMI ID used for EC2 instance"
+  value       = "ami-049731af5cd9af3ec"
 }
 
 output "availability_zones" {
