@@ -25,7 +25,7 @@ resource "aws_instance" "main" {
               set -euo pipefail
               
               LOG_FILE="/var/log/user-data.log"
-              exec >>"${LOG_FILE}" 2>&1
+              exec >>"$${LOG_FILE}" 2>&1
               echo "User data script started at $(date)"
               
               # Update system packages
@@ -39,9 +39,7 @@ resource "aws_instance" "main" {
                 vim \
                 nano \
                 tree \
-                jq \
                 nc \
-                curl \
                 unzip \
                 nmap-ncat
               
@@ -50,7 +48,23 @@ resource "aws_instance" "main" {
            
               # Enable and start Podman socket for Docker API compatibility
               #systemctl enable --now podman.socket
-                        
+
+              subscription-manager repos --enable codeready-builder-for-rhel-10-$(arch)-rpms
+              dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+              dnf update -y
+              
+              # Install usefull tools
+              dnf install -y \
+              htop \
+              neovim \
+              ripgrep \
+              btop
+
+              # Install golang
+              dnf install -y \
+              go-toolset \
+              golang-docs
+              
               # Set timezone to Singapore
               timedatectl set-timezone Asia/Singapore
 
@@ -59,6 +73,7 @@ resource "aws_instance" "main" {
               echo 'export COLORTERM=truecolor' >> /home/ec2-user/.bashrc
               echo 'alias ll="ls -la --color=auto"' >> /home/ec2-user/.bashrc
               echo 'alias ls="ls --color=auto"' >> /home/ec2-user/.bashrc
+              
               chown ec2-user:ec2-user /home/ec2-user/.bashrc
 
               echo "User data script completed at $(date)"
