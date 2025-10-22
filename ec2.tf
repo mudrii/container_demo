@@ -22,41 +22,46 @@ resource "aws_instance" "main" {
 
   user_data = <<-EOF
               #!/bin/bash
-              set -e
+              set -euo pipefail
               
-              # Update system
+              LOG_FILE="/var/log/user-data.log"
+              exec >>"${LOG_FILE}" 2>&1
+              echo "User data script started at $(date)"
+              
+              # Update system packages
               dnf update -y
               
               # Install essential tools
               dnf install -y \
                 git \
-                htop \
                 tmux \
                 wget \
                 vim \
                 nano \
                 tree \
                 jq \
-                nc
+                nc \
+                curl \
+                unzip \
+                nmap-ncat
               
-              # Configure ec2-user
-              # ec2-user already exists and is in wheel group
-              # Add additional configuration as needed
-              
+              # Install container tools (Podman, Buildah, Skopeo)
+              dnf install -y container-tools
+           
+              # Enable and start Podman socket for Docker API compatibility
+              #systemctl enable --now podman.socket
+                        
               # Set timezone to Singapore
               timedatectl set-timezone Asia/Singapore
-              
-              # Create a welcome message
-              cat > /etc/motd << 'MOTD'
-              ╔════════════════════════════════════════════════╗
-              ║   Welcome to Singapore Infrastructure EC2     ║
-              ║   Managed by OpenTofu                         ║
-              ║   Region: ap-southeast-1                      ║
-              ╚════════════════════════════════════════════════╝
-              MOTD
-              
-              # Log completion
-              echo "User data script completed at $(date)" >> /var/log/user-data.log
+
+              # Configure terminal for ec2-user
+              echo 'export TERM=xterm-256color' >> /home/ec2-user/.bashrc
+              echo 'export COLORTERM=truecolor' >> /home/ec2-user/.bashrc
+              echo 'alias ll="ls -la --color=auto"' >> /home/ec2-user/.bashrc
+              echo 'alias ls="ls --color=auto"' >> /home/ec2-user/.bashrc
+              chown ec2-user:ec2-user /home/ec2-user/.bashrc
+
+              echo "User data script completed at $(date)"
               EOF
 
   metadata_options {
