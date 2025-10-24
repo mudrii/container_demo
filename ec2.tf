@@ -44,7 +44,7 @@ resource "aws_instance" "main" {
                 nmap-ncat
               
               # Install container tools (Podman, Buildah, Skopeo)
-              dnf install -y container-tools
+              #dnf install -y container-tools
            
               # Enable and start Podman socket for Docker API compatibility
               #systemctl enable --now podman.socket
@@ -58,7 +58,8 @@ resource "aws_instance" "main" {
               htop \
               neovim \
               ripgrep \
-              btop
+              btop \
+              bat
 
               # Install golang
               dnf install -y \
