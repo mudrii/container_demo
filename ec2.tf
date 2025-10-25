@@ -20,65 +20,8 @@ resource "aws_instance" "main" {
     }
   }
 
-  user_data = <<-EOF
-              #!/bin/bash
-              set -euo pipefail
-              
-              LOG_FILE="/var/log/user-data.log"
-              exec >>"$${LOG_FILE}" 2>&1
-              echo "User data script started at $(date)"
-              
-              # Update system packages
-              dnf update -y
-              
-              # Install essential tools
-              dnf install -y \
-                git \
-                tmux \
-                wget \
-                vim \
-                nano \
-                tree \
-                nc \
-                unzip \
-                nmap-ncat
-              
-              # Install container tools (Podman, Buildah, Skopeo)
-              #dnf install -y container-tools
-           
-              # Enable and start Podman socket for Docker API compatibility
-              #systemctl enable --now podman.socket
-
-              subscription-manager repos --enable codeready-builder-for-rhel-10-$(arch)-rpms
-              dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
-              dnf update -y
-              
-              # Install usefull tools
-              dnf install -y \
-              htop \
-              neovim \
-              ripgrep \
-              btop \
-              bat
-
-              # Install golang
-              dnf install -y \
-              go-toolset \
-              golang-docs
-              
-              # Set timezone to Singapore
-              timedatectl set-timezone Asia/Singapore
-
-              # Configure terminal for ec2-user
-              echo 'export TERM=xterm-256color' >> /home/ec2-user/.bashrc
-              echo 'export COLORTERM=truecolor' >> /home/ec2-user/.bashrc
-              echo 'alias ll="ls -la --color=auto"' >> /home/ec2-user/.bashrc
-              echo 'alias ls="ls --color=auto"' >> /home/ec2-user/.bashrc
-              
-              chown ec2-user:ec2-user /home/ec2-user/.bashrc
-
-              echo "User data script completed at $(date)"
-              EOF
+  user_data                   = file("${path.module}/cloud-config.yaml")
+  user_data_replace_on_change = true
 
   metadata_options {
     http_endpoint               = "enabled"

@@ -1,0 +1,17 @@
+#cloud-config
+package_update: true
+runcmd:
+  - ["/bin/bash", "-lc", "subscription-manager repos --enable codeready-builder-for-rhel-10-$(arch)-rpms || true"]
+  - ["dnf", "install", "-y", "https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm"]
+  - ["dnf", "update", "-y"]
+  - ["dnf", "install", "-y", "git", "tmux", "wget", "vim", "nano", "tree", "nc", "unzip", "nmap-ncat", "htop", "neovim", "ripgrep", "btop", "bat"]
+  - ["dnf", "install", "-y", "go-toolset", "golang-docs"]
+  - ["timedatectl", "set-timezone", "Asia/Singapore"]
+  - ["/bin/bash", "-lc", "echo 'export TERM=xterm-256color' >> /home/ec2-user/.bashrc"]
+  - ["/bin/bash", "-lc", "echo 'export COLORTERM=truecolor' >> /home/ec2-user/.bashrc"]
+  - ["/bin/bash", "-lc", "echo 'alias ll=\"ls -la --color=auto\"' >> /home/ec2-user/.bashrc"]
+  - ["/bin/bash", "-lc", "echo 'alias ls=\"ls --color=auto\"' >> /home/ec2-user/.bashrc"]
+  - ["chown", "ec2-user:ec2-user", "/home/ec2-user/.bashrc"]
+
+output:
+  all: "| tee -a /var/log/cloud-init-output.log"

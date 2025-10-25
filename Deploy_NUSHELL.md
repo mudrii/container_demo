@@ -3,7 +3,7 @@
 ## Visual Directory Structure After Setup
 
 ```sh
-singapore-infrastructure/
+container-infra/
 │
 ├── .gitignore                    # ← Prevents committing sensitive files
 ├── README.md                     # ← Documentation
@@ -16,6 +16,7 @@ singapore-infrastructure/
 ├── security_groups.tf            # ← Security group rules
 ├── key_pair.tf                   # ← SSH key pair
 ├── ec2.tf                        # ← EC2 instance & EIP
+├── cloud-config.yaml             # ← similar to user-data predeploy all defined service/tools 
 ├── outputs.tf                    # ← Output values
 │
 ├── ssh_keys/                     # ← SSH keys (gitignored)
@@ -36,8 +37,8 @@ singapore-infrastructure/
 cd ~/Documents  # or wherever you prefer
 
 # Create the main project directory
-mkdir singapore-infrastructure
-cd singapore-infrastructure
+mkdir container-infra
+cd container-infra
 
 # Create the SSH keys subdirectory
 mkdir ssh_keys
@@ -45,7 +46,7 @@ mkdir ssh_keys
 # Verify you're in the right place
 pwd
 
-# Should show something like: /Users/YOUR_USERNAME/Documents/singapore-infrastructure
+# Should show something like: /Users/YOUR_USERNAME/Documents/container-infra
 
 # List to confirm
 ls
@@ -76,7 +77,7 @@ print $my_ip
 
 ```sh
 # Generate SSH key pair (this command is the same)
-ssh-keygen -t rsa -b 4096 -f ssh_keys/id_rsa -N "" -C "singapore-ec2-access"
+ssh-keygen -t rsa -b 4096 -f ssh_keys/id_rsa -N "" -C "ec2-access"
 
 # Set correct permissions (same on macOS)
 chmod 700 ssh_keys
@@ -146,7 +147,7 @@ crash.*.log
 ```sh
 "terraform {
   required_version = \">= 1.6.0\"
-  
+
   required_providers {
     aws = {
       source  = \"hashicorp/aws\"
@@ -157,7 +158,7 @@ crash.*.log
 
 provider \"aws\" {
   region = var.aws_region
-  
+
   default_tags {
     tags = {
       Environment = var.environment
@@ -188,7 +189,7 @@ variable \"environment\" {
 variable \"project_name\" {
   description = \"Project name for resource naming\"
   type        = string
-  default     = \"singapore-infra\"
+  default     = \"container-infra\"
 }
 
 variable \"vpc_cidr\" {
@@ -216,15 +217,15 @@ variable \"instance_type\" {
 }
 
 variable \"allowed_ssh_cidr\" {
-  description = \"CIDR blocks allowed to SSH - CHANGE THIS TO YOUR IP!\"
+  description = \"CIDR blocks allowed to SSH\"
   type        = list(string)
-  default     = [\"0.0.0.0/0\"] # WARNING: Wide open! Change this!
+  default     = [\"0.0.0.0/0\"]
 }
 
 variable \"root_volume_size\" {
   description = \"Size of root EBS volume in GB\"
   type        = number
-  default     = 20
+  default     = 80
 }
 " | save -f variables.tf
 ```
@@ -235,19 +236,22 @@ variable \"root_volume_size\" {
 # Get your IP and store it
 let my_ip = (http get https://checkip.amazonaws.com | str trim)
 print $"Your public IP is: ($my_ip)"
+```
 
+```sh
 # Create terraform.tfvars with your actual IP
-$"# Custom configuration values
-aws_region       = \"ap-southeast-1\"
-environment      = \"production\"
-project_name     = \"singapore-infra\"
+"# Custom configuration values
+aws_region   = \"ap-southeast-1\"
+environment  = \"production\"
+project_name = \"container-infra\"
 
 # SECURITY: Only allow SSH from your IP
-allowed_ssh_cidr = [\"($my_ip)/32\"]
+# allowed_ssh_cidr = [\"($my_ip)/32\"] # User access only from your IP
+allowed_ssh_cidr = [\"0.0.0.0/0\"]
 
 # EC2 Configuration
-instance_type      = \"t2.medium\"
-root_volume_size   = 20
+instance_type    = \"t2.medium\"
+root_volume_size = 80
 " | save -f terraform.tfvars
 
 # Verify the file was created correctly
@@ -388,30 +392,10 @@ resource \"aws_key_pair\" \"deployer\" {
 #### **Create ec2.tf**
 
 ```sh
-"# Get latest Amazon Linux 2023 AMI
-data \"aws_ami\" \"amazon_linux\" {
-  most_recent = true
-  owners      = [\"amazon\"]
-
-  filter {
-    name   = \"name\"
-    values = [\"al2023-ami-*-x86_64\"]
-  }
-
-  filter {
-    name   = \"virtualization-type\"
-    values = [\"hvm\"]
-  }
-
-  filter {
-    name   = \"root-device-type\"
-    values = [\"ebs\"]
-  }
-}
-
+"# RedHat Enterprise Linux 10 AMI
 # EC2 Instance
 resource \"aws_instance\" \"main\" {
-  ami           = data.aws_ami.amazon_linux.id
+  ami           = \"ami-049731af5cd9af3ec\" # RHEL 10 x86_64
   instance_type = var.instance_type
   key_name      = aws_key_pair.deployer.key_name
 
@@ -430,44 +414,8 @@ resource \"aws_instance\" \"main\" {
     }
   }
 
-  user_data = <<-EOF
-              #!/bin/bash
-              set -e
-              
-              # Update system
-              dnf update -y
-              
-              # Install essential tools
-              dnf install -y \\
-                git \\
-                htop \\
-                tmux \\
-                wget \\
-                vim \\
-                nano \\
-                tree \\
-                jq \\
-                nc
-              
-              # Configure ec2-user
-              # ec2-user already exists and is in wheel group
-              # Add additional configuration as needed
-              
-              # Set timezone to Singapore
-              timedatectl set-timezone Asia/Singapore
-              
-              # Create a welcome message
-              cat > /etc/motd << 'MOTD'
-              ╔════════════════════════════════════════════════╗
-              ║   Welcome to Singapore Infrastructure EC2     ║
-              ║   Managed by OpenTofu                         ║
-              ║   Region: ap-southeast-1                      ║
-              ╚════════════════════════════════════════════════╝
-              MOTD
-              
-              # Log completion
-              echo \"User data script completed at \$(date)\" >> /var/log/user-data.log
-              EOF
+  user_data                   = file(\"\${path.module}/cloud-config.yaml\")
+  user_data_replace_on_change = true
 
   metadata_options {
     http_endpoint               = \"enabled\"
@@ -484,7 +432,7 @@ resource \"aws_instance\" \"main\" {
 
   lifecycle {
     ignore_changes = [
-      ami,  # Don't force replacement on AMI updates
+      ami, # Don't force replacement on AMI updates
     ]
   }
 }
@@ -562,8 +510,8 @@ output \"ssh_connection_command\" {
 }
 
 output \"ami_id\" {
-  description = \"AMI ID used for EC2 instance\"
-  value       = data.aws_ami.amazon_linux.id
+  description = \"RHEL 10 AMI ID used for EC2 instance\"
+  value       = \"ami-049731af5cd9af3ec\"
 }
 
 output \"availability_zones\" {

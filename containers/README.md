@@ -2,7 +2,7 @@
 
 ## Linux Kernel Building Blocks Enabling Containers
 
-## namespaces - create isolated and independent instances of user space - 1 isolated instances = 1 containers
+## Namespaces - create isolated and independent instances of user space - 1 isolated instances = 1 containers
 
 Provide isolation of system resources.
 Each container gets its own instance of these kernel resources:
@@ -14,6 +14,29 @@ Each container gets its own instance of these kernel resources:
 - UTS — Hostname/domain isolation
 - USER — Maps container users to host users for security
 
+Example:
+Processes inside one PID namespace cannot see processes in another namespace.
+Result: Each container has its own “virtualized” view of the system:
+
+Own process list
+Own network stack
+Own mount points
+Own interprocess communication (IPC) mechanisms
+
+```sh
+podman run -d --name alp1 alpine sleep 1000
+podman run -d --name alp2 alpine sleep 1001
+
+podman ps
+
+podman exec -it alp1 ps aux arep sleep
+podman exec -it alp2 ps aux arep sleep
+
+ps aux | grep sleep
+
+ls /proc/19559/ns/
+```
+
 ## Control Groups (cgroups)
 
 Provide resource control and accounting.
@@ -22,13 +45,24 @@ Prevents resource starvation (one container hogging all resources).
 
 - Each container = one cgroup.
 - Admins can set limits like:
-
 ```txt
 CPU ≤ 50%
 Memory ≤ 1 GB
 ```
+Cgroups group processes and control resource usage:
 
-- If exceeded → container throttled, restarted, or killed.
+- CPU
+- Memory
+- Disk I/O
+- Network bandwidth
+
+_If exceeded → container throttled, restarted, or killed._
+
+```sh
+podman run --name cgroupID -it -d --memory=1G --memory-swap=1G ubuntu /bin/bash
+
+CONTAINER_ID=$(podman ps --format "{{.ID}}" --filter "name=cgroupID")
+```
 
 ## Unified File System (UFS)
 
@@ -42,9 +76,55 @@ Used by Docker to manage container images.
 
 _“UFS layers file systems on top of each other — presenting a unified block for the container.”_
 
+Image vs Container
 
+- Image: Static, immutable blueprint built via docker build.
+- Container: A running instance of an image.
 
-## capabilities
+_Analogy: Image = binary program, Container = running process._
+
+🧱 Layers
+
+- Each image is made up of layers (from base → new additions).
+- Commands like RUN, COPY, ADD create new layers.
+- Layers stack like pancakes; each one depends on the one below.
+- Layers are identified by hashes and sometimes tags (e.g., ubuntu:16.04).
+
+⚙️ Intermediate Containers
+
+- During docker build, Docker runs each step in a temporary container.
+- That container’s result becomes a new image layer.
+- These intermediate containers are deleted after build completion.
+
+💾 Layer Reuse and Caching
+
+- If you already have the base image (e.g., ubuntu), Docker reuses it.
+- Only new or changed layers are downloaded or built.
+- Works at file-level diffs, not line-level like git.
+- Build cache: If earlier steps in Dockerfile haven’t changed, Docker reuses cached layers.
+- Cache is invalidated once a step changes; all following steps rebuild.
+- ADD/COPY always invalidate cache (since Docker doesn’t check file contents deeply).
+
+🧍 Container’s Read-Write Layer
+
+- Containers get a temporary top read-write layer above image layers.
+- Changes (adds/modifies/deletes) occur only here — images remain unchanged.
+- When a container stops, that layer disappears (unless committed to a new image).
+
+🏗️ Best Practices
+
+- Put static steps (e.g., package installs) at the top of the Dockerfile.
+- Put frequently changed steps (e.g., source code COPY) at the bottom.
+- This maximizes build cache efficiency and reduces rebuild time.
+
+## Capabilities – Privilege Restriction
+
+Linux capabilities divide the all-powerful “root” privileges into smaller permission sets.
+Docker/Podman uses these to control what a containerized process can or cannot do. [Docker CAP]( https://docs.docker.com/engine/containers/run/#fruntime-privilege-and-linux-capabilities), [Podman CAP](https://docs.podman.io/en/latest/markdown/podman-build.1.html)
+
+By default, Docker enables 14 standard capabilities (e.g., CHOWN, NET_BIND_SERVICE, etc.).
+
+You can drop or add capabilities as needed.
 
 - fine grain control over privileges a user or process gets
 - --privileged = true 
@@ -69,17 +149,6 @@ I'll provide a much more detailed version with comprehensive explanations for ea
 podman --version
 
 # Expected output: podman version 4.x.x
-```
-
-```bash
-# Install required system utilities for inspection
-# - procps-ng: Provides 'ps' command to view processes
-# - util-linux: Provides 'lsns' (list namespaces) and 'nsenter' (enter namespaces)
-# - libcap: Provides 'capsh' and 'getpcaps' for viewing capabilities
-sudo dnf install -y procps-ng util-linux libcap
-
-# Explanation: These tools allow us to inspect the kernel-level isolation
-# mechanisms that Podman uses to create containers
 ```
 
 ```bash
@@ -892,244 +961,7 @@ echo "Current memory usage: $((MEM_CURRENT / 1024 / 1024)) MB"
 
 ---
 
-### **Step 9: Create Comprehensive Documentation**
-
-**Purpose:** Generate a detailed report that can be used in presentations or documentation.
-
-```bash
-# Create a comprehensive isolation report
-cat > generate_isolation_report.sh << 'EOF'
-#!/bin/bash
-
-CONTAINER_NAME="${1:-demo-container}"
-OUTPUT_FILE="container_isolation_report_$(date +%Y%m%d_%H%M%S).txt"
-
-echo "Generating comprehensive isolation report..."
-echo "Container: $CONTAINER_NAME"
-echo "Output: $OUTPUT_FILE"
-echo ""
-
-# Check if container exists
-if ! podman ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    echo "Error: Container '$CONTAINER_NAME' not found or not running"
-    exit 1
-fi
-
-# Get PID
-PID=$(podman inspect -f '{{.State.Pid}}' $CONTAINER_NAME)
-
-# Start report
-{
-    echo "================================================================"
-    echo "          CONTAINER ISOLATION ANALYSIS REPORT"
-    echo "================================================================"
-    echo ""
-    echo "Generated: $(date)"
-    echo "Container: $CONTAINER_NAME"
-    echo "Host PID: $PID"
-    echo "Host: $(hostname)"
-    echo "Kernel: $(uname -r)"
-    echo "OS: $(cat /etc/redhat-release)"
-    echo ""
-    
-    echo "================================================================"
-    echo "1. NAMESPACE ISOLATION"
-    echo "================================================================"
-    echo ""
-    echo "Namespaces provide isolated views of system resources."
-    echo "Each namespace type creates a separate environment:"
-    echo ""
-    
-    echo "--- Container Namespaces ---"
-    sudo lsns -p $PID
-    echo ""
-    
-    echo "--- Namespace Details ---"
-    sudo ls -l /proc/$PID/ns/
-    echo ""
-    
-    echo "--- Namespace Comparison with Host ---"
-    echo "Container IDs:"
-    sudo ls -l /proc/$PID/ns/ | awk '{print $9, $11}'
-    echo ""
-    echo "Host IDs (PID 1):"
-    sudo ls -l /proc/1/ns/ | awk '{print $9, $11}'
-    echo ""
-    
-    echo "================================================================"
-    echo "2. CGROUP RESOURCE CONTROLS"
-    echo "================================================================"
-    echo ""
-    echo "Cgroups enforce resource limits (CPU, memory, I/O)."
-    echo ""
-    
-    CGROUP_PATH=$(cat /proc/$PID/cgroup | cut -d: -f3)
-    echo "Cgroup Path: $CGROUP_PATH"
-    echo "Full Path: /sys/fs/cgroup${CGROUP_PATH}"
-    echo ""
-    
-    echo "--- Memory Controls ---"
-    echo "Memory Limit: $(sudo cat /sys/fs/cgroup${CGROUP_PATH}/memory.max 2>/dev/null || echo 'Not set')"
-    echo "Current Usage: $(sudo cat /sys/fs/cgroup${CGROUP_PATH}/memory.current 2>/dev/null) bytes"
-    echo "High Watermark: $(sudo cat /sys/fs/cgroup${CGROUP_PATH}/memory.high 2>/dev/null || echo 'Not set')"
-    echo ""
-    
-    echo "--- CPU Controls ---"
-    echo "CPU Quota: $(sudo cat /sys/fs/cgroup${CGROUP_PATH}/cpu.max 2>/dev/null || echo 'Not set')"
-    echo "CPU Weight: $(sudo cat /sys/fs/cgroup${CGROUP_PATH}/cpu.weight 2>/dev/null || echo 'Not set')"
-    echo ""
-    
-    echo "--- CPU Statistics ---"
-    sudo cat /sys/fs/cgroup${CGROUP_PATH}/cpu.stat 2>/dev/null
-    echo ""
-    
-    echo "--- Memory Statistics (Top 15) ---"
-    sudo cat /sys/fs/cgroup${CGROUP_PATH}/memory.stat 2>/dev/null | head -15
-    echo ""
-    
-    echo "================================================================"
-    echo "3. LINUX CAPABILITIES"
-    echo "================================================================"
-    echo ""
-    echo "Capabilities provide fine-grained privilege control."
-    echo "They replace the all-or-nothing root/non-root model."
-    echo ""
-    
-    echo "--- Raw Capability Bitmasks ---"
-    grep Cap /proc/$PID/status
-    echo ""
-    
-    echo "--- Decoded Capabilities ---"
-    CAP_EFF=$(grep CapEff /proc/$PID/status | awk '{print $2}')
-    echo "Effective Capabilities (Hex: $CAP_EFF):"
-    capsh --decode=$CAP_EFF
-    echo ""
-    
-    echo "--- Human-Readable Format ---"
-    getpcaps $PID 2>&1 | grep -v "warning"
-    echo ""
-    
-    echo "--- Capabilities from Inside Container ---"
-    podman exec $CONTAINER_NAME capsh --print 2>/dev/null | grep "Current:"
-    echo ""
-    
-    echo "================================================================"
-    echo "4. CONTAINER CONFIGURATION"
-    echo "================================================================"
-    echo ""
-    
-    echo "--- Basic Info ---"
-    podman inspect $CONTAINER_NAME | jq -r '
-        .[0] | {
-            Id: .Id[0:12],
-            Created: .Created,
-            State: .State.Status,
-            Image: .ImageName,
-            Hostname: .Config.Hostname
-        }
-    ' 2>/dev/null || podman inspect $CONTAINER_NAME | grep -E '"Id"|"Created"|"Status"|"Image"|"Hostname"' | head -10
-    echo ""
-    
-    echo "--- Resource Limits from Config ---"
-    podman inspect $CONTAINER_NAME | jq -r '
-        .[0].HostConfig | {
-            Memory: .Memory,
-            MemoryReservation: .MemoryReservation,
-            MemorySwap: .MemorySwap,
-            NanoCpus: .NanoCpus,
-            CpuQuota: .CpuQuota,
-            CpuPeriod: .CpuPeriod
-        }
-    ' 2>/dev/null || echo "Install jq for detailed JSON parsing"
-    echo ""
-    
-    echo "================================================================"
-    echo "5. SECURITY ANALYSIS"
-    echo "================================================================"
-    echo ""
-    
-    echo "--- SELinux Context ---"
-    ls -Z /proc/$PID/exe 2>/dev/null || echo "SELinux not enabled or accessible"
-    echo ""
-    
-    echo "--- Seccomp Profile ---"
-    grep Seccomp /proc/$PID/status
-    echo ""
-    
-    echo "--- Privileged Mode ---"
-    PRIVILEGED=$(podman inspect $CONTAINER_NAME | grep -i '"Privileged"' | awk '{print $2}')
-    echo "Privileged: $PRIVILEGED"
-    echo ""
-    
-    echo "================================================================"
-    echo "6. NETWORK ISOLATION"
-    echo "================================================================"
-    echo ""
-    
-    echo "--- Container Network Interfaces ---"
-    sudo nsenter -t $PID -n ip addr show
-    echo ""
-    
-    echo "--- Container Routing Table ---"
-    sudo nsenter -t $PID -n ip route show
-    echo ""
-    
-    echo "================================================================"
-    echo "7. PROCESS ISOLATION"
-    echo "================================================================"
-    echo ""
-    
-    echo "--- Processes from Host View ---"
-    ps -p $PID -o pid,ppid,user,comm,args
-    echo ""
-    
-    echo "--- Processes from Container View ---"
-    podman exec $CONTAINER_NAME ps aux
-    echo ""
-    
-    echo "================================================================"
-    echo "8. FILESYSTEM ISOLATION"
-    echo "================================================================"
-    echo ""
-    
-    echo "--- Container Root Filesystem ---"
-    sudo nsenter -t $PID -m df -h / 2>/dev/null
-    echo ""
-    
-    echo "--- Mount Count ---"
-    echo "Container mounts: $(sudo nsenter -t $PID -m mount | wc -l)"
-    echo "Host mounts: $(mount | wc -l)"
-    echo ""
-    
-    echo "================================================================"
-    echo "END OF REPORT"
-    echo "================================================================"
-    
-} > "$OUTPUT_FILE"
-
-echo "Report generated: $OUTPUT_FILE"
-echo ""
-echo "To view the report:"
-echo "  less $OUTPUT_FILE"
-echo ""
-echo "To copy to another system:"
-echo "  scp $OUTPUT_FILE user@host:/path/"
-
-EOF
-
-chmod +x generate_isolation_report.sh
-
-# Generate the report
-./generate_isolation_report.sh demo-container
-
-# View the report
-echo "Report generated. View it with:"
-echo "  less container_isolation_report_*.txt"
-```
-
----
-
-### **Step 10: Cleanup and Summary**
+### **Step 9: Cleanup and Summary**
 
 **Purpose:** Clean up resources and provide a summary of what was demonstrated.
 
@@ -1170,9 +1002,7 @@ podman ps -a
 # podman system prune -a
 ```
 
-```bash
 # Display summary
-cat << 'EOF'
 
 ================================================================
                     DEMONSTRATION SUMMARY
@@ -1231,8 +1061,6 @@ For presentations, focus on:
 4. Use nsenter to show dual perspective (host vs container)
 
 ================================================================
-EOF
-```
 
 
-This comprehensive guide provides everything you need for undastanding on container isolation!
+_This comprehensive guide provides everything you need for undastanding on container isolation!_

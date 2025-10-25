@@ -13,7 +13,7 @@ variable "environment" {
 variable "project_name" {
   description = "Project name for resource naming"
   type        = string
-  default     = "singapore-infra"
+  default     = "container-infra"
 }
 
 variable "vpc_cidr" {

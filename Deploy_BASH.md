@@ -3,7 +3,7 @@
 ## Visual Directory Structure After Setup
 
 ```sh
-singapore-infrastructure/
+container-infra/
 │
 ├── .gitignore                    # ← Prevents committing sensitive files
 ├── README.md                     # ← Documentation
@@ -16,6 +16,7 @@ singapore-infrastructure/
 ├── security_groups.tf            # ← Security group rules
 ├── key_pair.tf                   # ← SSH key pair
 ├── ec2.tf                        # ← EC2 instance & EIP
+├── cloud-config.yaml             # ← similar to user-data predeploy all defined service/tools 
 ├── outputs.tf                    # ← Output values
 │
 ├── ssh_keys/                     # ← SSH keys (gitignored)
@@ -38,15 +39,15 @@ Open Terminal and run:
 cd ~/Documents  # or wherever you prefer
 
 # Create the main project directory
-mkdir singapore-infrastructure
-cd singapore-infrastructure
+mkdir container-infra
+cd container-infra
 
 # Create the SSH keys subdirectory
 mkdir ssh_keys
 
 # Verify you're in the right place
 pwd
-# Should show: /Users/YOUR_USERNAME/Documents/singapore-infrastructure
+# Should show: /Users/YOUR_USERNAME/Documents/container-infra
 ```
 
 ### **Step 2: Find Your Public IP Address**
@@ -78,11 +79,11 @@ Example: If your IP is `175.139.207.169`, you'll use `175.139.207.169/32`
 
 ### **Step 3: Generate SSH Keys**
 
-Still in the `singapore-infrastructure` directory:
+Still in the `container-infra` directory:
 
 ```bash
 # Generate SSH key pair
-ssh-keygen -t rsa -b 4096 -f ssh_keys/id_rsa -N "" -C "singapore-ec2-access"
+ssh-keygen -t rsa -b 4096 -f ssh_keys/id_rsa -N "" -C "ec2-access"
 
 # You should see:
 # Generating public/private rsa key pair.
@@ -154,7 +155,7 @@ EOF
 cat > provider.tf << 'EOF'
 terraform {
   required_version = ">= 1.6.0"
-  
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -165,7 +166,7 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
-  
+
   default_tags {
     tags = {
       Environment = var.environment
@@ -196,7 +197,7 @@ variable "environment" {
 variable "project_name" {
   description = "Project name for resource naming"
   type        = string
-  default     = "singapore-infra"
+  default     = "container-infra"
 }
 
 variable "vpc_cidr" {
@@ -224,15 +225,15 @@ variable "instance_type" {
 }
 
 variable "allowed_ssh_cidr" {
-  description = "CIDR blocks allowed to SSH - CHANGE THIS TO YOUR IP!"
+  description = "CIDR blocks allowed to SSH"
   type        = list(string)
-  default     = ["0.0.0.0/0"] # WARNING: Wide open! Change this!
+  default     = ["0.0.0.0/0"]
 }
 
 variable "root_volume_size" {
   description = "Size of root EBS volume in GB"
   type        = number
-  default     = 20
+  default     = 80
 }
 EOF
 ```
@@ -246,16 +247,16 @@ echo "Your public IP is: $MY_IP"
 # Create terraform.tfvars with your actual IP
 cat > terraform.tfvars << EOF
 # Custom configuration values
-aws_region       = "ap-southeast-1"
-environment      = "production"
-project_name     = "singapore-infra"
+aws_region   = "ap-southeast-1"
+environment  = "production"
+project_name = "container-infra"
 
 # SECURITY: Only allow SSH from your IP
-allowed_ssh_cidr = ["${MY_IP}/32"]
+allowed_ssh_cidr = ["0.0.0.0/0"]
 
 # EC2 Configuration
-instance_type      = "t2.medium"
-root_volume_size   = 20
+instance_type    = "t2.medium"
+root_volume_size = 80
 EOF
 
 # Verify the file was created correctly
@@ -397,30 +398,10 @@ EOF
 #### **Create ec2.tf**
 ```bash
 cat > ec2.tf << 'EOF'
-# Get latest Amazon Linux 2023 AMI
-data "aws_ami" "amazon_linux" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-*-x86_64"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-
-  filter {
-    name   = "root-device-type"
-    values = ["ebs"]
-  }
-}
-
+# RedHat Enterprise Linux 10 AMI
 # EC2 Instance
 resource "aws_instance" "main" {
-  ami           = data.aws_ami.amazon_linux.id
+  ami           = "ami-049731af5cd9af3ec" # RHEL 10 x86_64
   instance_type = var.instance_type
   key_name      = aws_key_pair.deployer.key_name
 
@@ -441,42 +422,62 @@ resource "aws_instance" "main" {
 
   user_data = <<-EOF
               #!/bin/bash
-              set -e
+              set -euo pipefail
               
-              # Update system
+              LOG_FILE="/var/log/user-data.log"
+              exec >>"$${LOG_FILE}" 2>&1
+              echo "User data script started at $(date)"
+              
+              # Update system packages
               dnf update -y
               
               # Install essential tools
               dnf install -y \
                 git \
-                htop \
                 tmux \
                 wget \
-                curl \
                 vim \
                 nano \
                 tree \
-                jq \
-                nc
+                nc \
+                unzip \
+                nmap-ncat
               
-              # Configure ec2-user
-              # ec2-user already exists and is in wheel group
-              # Add additional configuration as needed
+              # Install container tools (Podman, Buildah, Skopeo)
+              dnf install -y container-tools
+           
+              # Enable and start Podman socket for Docker API compatibility
+              #systemctl enable --now podman.socket
+
+              subscription-manager repos --enable codeready-builder-for-rhel-10-$(arch)-rpms
+              dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+              dnf update -y
+              
+              # Install usefull tools
+              dnf install -y \
+              htop \
+              neovim \
+              ripgrep \
+              btop \
+              bat
+
+              # Install golang
+              dnf install -y \
+              go-toolset \
+              golang-docs
               
               # Set timezone to Singapore
               timedatectl set-timezone Asia/Singapore
+
+              # Configure terminal for ec2-user
+              echo 'export TERM=xterm-256color' >> /home/ec2-user/.bashrc
+              echo 'export COLORTERM=truecolor' >> /home/ec2-user/.bashrc
+              echo 'alias ll="ls -la --color=auto"' >> /home/ec2-user/.bashrc
+              echo 'alias ls="ls --color=auto"' >> /home/ec2-user/.bashrc
               
-              # Create a welcome message
-              cat > /etc/motd << 'MOTD'
-              ╔════════════════════════════════════════════════╗
-              ║   Welcome to Singapore Infrastructure EC2     ║
-              ║   Managed by OpenTofu                         ║
-              ║   Region: ap-southeast-1                      ║
-              ╚════════════════════════════════════════════════╝
-              MOTD
-              
-              # Log completion
-              echo "User data script completed at $(date)" >> /var/log/user-data.log
+              chown ec2-user:ec2-user /home/ec2-user/.bashrc
+
+              echo "User data script completed at $(date)"
               EOF
 
   metadata_options {
@@ -494,7 +495,7 @@ resource "aws_instance" "main" {
 
   lifecycle {
     ignore_changes = [
-      ami,  # Don't force replacement on AMI updates
+      ami, # Don't force replacement on AMI updates
     ]
   }
 }
@@ -572,8 +573,8 @@ output "ssh_connection_command" {
 }
 
 output "ami_id" {
-  description = "AMI ID used for EC2 instance"
-  value       = data.aws_ami.amazon_linux.id
+  description = "RHEL 10 AMI ID used for EC2 instance"
+  value       = "ami-049731af5cd9af3ec"
 }
 
 output "availability_zones" {
@@ -658,7 +659,7 @@ aws configure
 
 ```bash
 # Make sure you're in the project directory
-cd ~/Documents/singapore-infrastructure
+cd ~/Documents/container-infra
 
 # Initialize OpenTofu (downloads AWS provider)
 tofu init

@@ -1,4 +1,4 @@
-# Singapore Infrastructure - AWS with OpenTofu
+# Infrastructure - AWS with OpenTofu
 
 ## Overview
 
@@ -7,7 +7,7 @@ This project creates a complete AWS infrastructure in Singapore (ap-southeast-1)
 ## Complete Project Structure
 
 ```sh
-singapore-infrastructure/         # Main project directory
+container-infra/                   # Main project directory
 ├── .gitignore                    # Git ignore file
 ├── provider.tf                   # AWS provider configuration
 ├── variables.tf                  # Variable definitions
@@ -16,6 +16,7 @@ singapore-infrastructure/         # Main project directory
 ├── security_groups.tf            # Security group definitions
 ├── key_pair.tf                   # SSH key pair resource
 ├── ec2.tf                        # EC2 instance configuration
+├── cloud-config.yaml             # ← similar to user-data predeploy all defined service/tools 
 ├── outputs.tf                    # Output values
 ├── README.md                     # Documentation
 └── ssh_keys/                     # SSH keys directory
